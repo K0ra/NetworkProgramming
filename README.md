@@ -1,2 +1,2 @@
 # NetworkProgramming
-ITMO Network Programming assignments
+ITMO Network Programming course assignments
