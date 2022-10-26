@@ -14,12 +14,13 @@ using namespace std;
 
 #define DEFAULT_BUF_SIZE 512
 #define DEFAULT_NICK_SIZE 32
+#define DEFAULT_BYTES_SIZE 4
 #define MAX_CLIENTS 10
 
 struct client_t {
   int id;
   int sockfd;
-  char nickname[DEFAULT_NICK_SIZE];
+  char *nickname;
 };
 
 static unsigned int clients_num = 0;
@@ -48,7 +49,7 @@ void remove_client(int id) {
   for (int i = 0; i < MAX_CLIENTS; ++i) {
     if (clients[i]) {
       if (clients[i]->id == id) {
-        clients[i] = nullptr;
+        clients[i] = NULL;
         break;
       }
     }
@@ -57,14 +58,33 @@ void remove_client(int id) {
   pthread_mutex_unlock(&clients_mutex);
 }
 
+/*
+  Sends the message by protocol standards:
+  message size followed by message body
+*/
+int send_msg(int sockfd, char* msg) {
+  int error_flag = 0;
+  uint32_t msg_size = htonl(strlen(msg));
+  int res = send(sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
+  if (res > 0) {
+    res = send(sockfd, msg, strlen(msg), 0);
+    if (res <= 0)
+      error_flag = 1;
+  } else {
+    error_flag = 1;
+  }
+
+  return (error_flag > 0) ? 0 : -1;
+}
+
 /* Send message to all clients except sender */
-void send_message(char *s, int id) {
+void broadcast_message(char *s, int id) {
   pthread_mutex_lock(&clients_mutex);
 
   for (int i = 0; i < MAX_CLIENTS; ++i) {
     if (clients[i]) {
       if (clients[i]->id != id) {
-        if (send(clients[i]->sockfd, s, strlen(s), 0) < 0) {
+        if (send_msg(clients[i]->sockfd, s) < 0) {
           perror("ERROR: send to descriptor failed");
           break;
         }
@@ -77,49 +97,74 @@ void send_message(char *s, int id) {
 
 void *handle_client(void *arg) {
   char buffer[DEFAULT_BUF_SIZE];
-  char name[DEFAULT_NICK_SIZE];
-  char total_buffer[DEFAULT_BUF_SIZE];
   int leave_flag = 0;
+  uint32_t nickname_size = 0;
+  uint32_t msg_size = 0;
+  char *nick_buf = NULL;
+  char *msg_buf = NULL;
 
   clients_num++;
   client_t *cli = (client_t *)arg;
-
-  if (recv(cli->sockfd, name, DEFAULT_NICK_SIZE, 0) <= 0)
-    leave_flag = 1;
-  else {
-    strncpy(cli->nickname, name, sizeof(name));
-    sprintf(buffer, "%s has joined\n", cli->nickname);
-    printf("%s", buffer);
-    send_message(buffer, cli->id);
-  }
-
-  bzero(buffer, DEFAULT_BUF_SIZE);
 
   while (true) {
     if (leave_flag) {
       break;
     }
+    // Get the nick size
+    int receive = recv(cli->sockfd, &nickname_size, DEFAULT_BYTES_SIZE, 0);
 
-    int receive = recv(cli->sockfd, buffer, DEFAULT_BUF_SIZE, 0);
-    if (receive > 0) {
-      if (strlen(buffer) > 0) {
-        time_t t = time(NULL);
-        struct tm *lt = localtime(&t);
-        sprintf(total_buffer, "{%02d:%02d} [%s] %s\n", lt->tm_hour, lt->tm_min,
-                cli->nickname, buffer);
-        send_message(total_buffer, cli->id);
+    if (receive > 0 && nickname_size > 0) {
+      // If no error, get the nickname
+      nickname_size = ntohl(nickname_size);
+      // printf("Nickname size=%d\n", nickname_size);
+
+      nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
+      memset(nick_buf, 0, (nickname_size + 1));
+      receive = recv(cli->sockfd, nick_buf, nickname_size, 0);
+
+      if (receive > 0) {
+        // printf("Nickname: %s\n", nick_buf);
+
+        // If no error, assign nickname to client object
+        strncpy(cli->nickname, nick_buf, nickname_size + 1);
+        // Get the message size
+        receive = recv(cli->sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
+
+        if (receive > 0 && msg_size > 0) {
+          // If no error, get the message
+          msg_size = ntohl(msg_size);
+          // printf("Message size=%d\n", msg_size);
+
+          msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
+          memset(msg_buf, 0, (msg_size + 1));
+          receive = recv(cli->sockfd, msg_buf, msg_size, 0);
+
+          if (receive > 0) {
+            // printf("Message: %s\n", msg_buf);
+            // char *date_buf = (char *)malloc(sizeof(char) * );
+            time_t t = time(NULL);
+            struct tm *lt = localtime(&t);
+            sprintf(buffer, "%02d:%02d", lt->tm_hour, lt->tm_min);
+
+            broadcast_message(nick_buf, cli->id);
+            broadcast_message(msg_buf, cli->id);
+            broadcast_message(buffer, cli->id);
+          }
+        }
       }
     } else if (receive == 0) {
       sprintf(buffer, "%s has left\n", cli->nickname);
       printf("%s", buffer);
-      send_message(buffer, cli->id);
+      // send_message(buffer, cli->id);
       leave_flag = 1;
     } else {
       printf("ERROR: -1\n");
       leave_flag = 1;
     }
 
-    bzero(buffer, DEFAULT_BUF_SIZE);
+    free(nick_buf);
+    free(msg_buf);
+    memset(buffer, 0, DEFAULT_BUF_SIZE);
   }
 
   /* Delete client from queue and yield thread */
@@ -188,6 +233,7 @@ int main(int argc, char *argv[]) {
       client_t *cli = (client_t *)malloc(sizeof(client_t));
       cli->sockfd = newsockfd;
       add_client(cli);
+      printf("New client has joined the chat.\n");
       // Create a thread process for that client
       pthread_create(&tid, NULL, &handle_client, (void *)cli);
     } else {
