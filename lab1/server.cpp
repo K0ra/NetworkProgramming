@@ -20,7 +20,7 @@ using namespace std;
 struct client_t {
   int id;
   int sockfd;
-  char *nickname;
+  char nickname[DEFAULT_NICK_SIZE];
 };
 
 static unsigned int clients_num = 0;
@@ -63,18 +63,20 @@ void remove_client(int id) {
   message size followed by message body
 */
 int send_msg(int sockfd, char* msg) {
-  int error_flag = 0;
   uint32_t msg_size = htonl(strlen(msg));
+  // printf("From Server :: Message: %s, msg_size=%li\n", msg, strlen(msg));
   int res = send(sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
   if (res > 0) {
+    // printf("First send is ok\n");
     res = send(sockfd, msg, strlen(msg), 0);
     if (res <= 0)
-      error_flag = 1;
-  } else {
-    error_flag = 1;
+      return -1;
+    // printf("Second send is ok\n\n");
   }
+  else
+    return -1;
 
-  return (error_flag > 0) ? 0 : -1;
+  return 0;
 }
 
 /* Send message to all clients except sender */
@@ -144,16 +146,20 @@ void *handle_client(void *arg) {
             // char *date_buf = (char *)malloc(sizeof(char) * );
             time_t t = time(NULL);
             struct tm *lt = localtime(&t);
+            // msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
             sprintf(buffer, "%02d:%02d", lt->tm_hour, lt->tm_min);
 
             broadcast_message(nick_buf, cli->id);
             broadcast_message(msg_buf, cli->id);
             broadcast_message(buffer, cli->id);
+            // if (nick_buf) free(nick_buf);
+            // if (msg_buf)  free(msg_buf);
+            // memset(buffer, 0, DEFAULT_BUF_SIZE);
           }
         }
       }
     } else if (receive == 0) {
-      sprintf(buffer, "%s has left\n", cli->nickname);
+      sprintf(buffer, "Client with id %d has left\n", cli->id);
       printf("%s", buffer);
       // send_message(buffer, cli->id);
       leave_flag = 1;
@@ -162,9 +168,10 @@ void *handle_client(void *arg) {
       leave_flag = 1;
     }
 
-    free(nick_buf);
-    free(msg_buf);
+    if (nick_buf) free(nick_buf);
+    if (msg_buf)  free(msg_buf);
     memset(buffer, 0, DEFAULT_BUF_SIZE);
+    // memset(cli->nickname, 0, DEFAULT_NICK_SIZE);
   }
 
   /* Delete client from queue and yield thread */

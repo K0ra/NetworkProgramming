@@ -59,7 +59,7 @@ void *send_msg_handler(void *args) {
     char ch[5];
     // matches all characters not equal to '\n',
     // not exceeding buff_size - 1, and stores it
-    if (scanf(" %4[^\n]", ch) < 0) {
+    if (scanf(" %4[^\n]%*c", ch) < 0) {
       perror("ERROR on scanf()");
       exit(EXIT_FAILURE);
     }
@@ -73,6 +73,7 @@ void *send_msg_handler(void *args) {
         perror("ERROR on fgets()");
         exit(EXIT_FAILURE);
       }
+      printf("Message to send from client: %s\n", msg);
 
       pthread_mutex_unlock(&msg_mutex);
 
@@ -142,11 +143,18 @@ void *recv_msg_handler(void *args) {
             if (receive > 0 && date_size > 0) {
               // If no error, get the date
               date_size = ntohl(date_size);
-              char *date_buf = (char *)malloc(sizeof(char) * (date_size + 1));
+              date_buf = (char *)malloc(sizeof(char) * (date_size + 1));
+              memset(date_buf, 0, (date_size + 1));
+              receive = recv(sockfd, date_buf, date_size, 0);
 
-              pthread_mutex_lock(&msg_mutex);
-              printf("{%s} [%s] %s", date_buf, nick_buf, msg_buf);
-              pthread_mutex_unlock(&msg_mutex);
+              if (receive > 0) {
+                pthread_mutex_lock(&msg_mutex);
+                printf("{%s} [%s] %s\n", date_buf, nick_buf, msg_buf);
+                pthread_mutex_unlock(&msg_mutex);
+                // free(nick_buf);
+                // free(msg_buf);
+                // free(date_buf);
+              }
             }
           }
         }
@@ -155,11 +163,14 @@ void *recv_msg_handler(void *args) {
       printf("ERROR: -1\n");
       leave_flag = 1;
     }
+    if (nick_buf) free(nick_buf);
+    if (msg_buf)  free(msg_buf);
+    if (date_buf) free(date_buf);
   }
 
-  free(nick_buf);
-  free(msg_buf);
-  free(date_buf);
+  if (nick_buf) free(nick_buf);
+  if (msg_buf)  free(msg_buf);
+  if (date_buf) free(date_buf);
   pthread_exit(NULL);
 }
 
@@ -179,7 +190,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_SUCCESS);
   }
 
-  strncpy(hostname, argv[1], sizeof(hostname));
+  strncpy(hostname, argv[1], sizeof(hostname) - 1);
   portno = (uint16_t)atoi(argv[2]);
   // strncpy(nickname, argv[3], sizeof(nickname));
   nickname = argv[3];
@@ -214,7 +225,7 @@ int main(int argc, char *argv[]) {
         (size_t)server->h_length);
   serv_addr.sin_port = htons(portno);
 
-  cout << serv_addr.sin_addr.s_addr << ": " << serv_addr.sin_port << endl;
+  // cout << serv_addr.sin_addr.s_addr << ": " << serv_addr.sin_port << endl;
 
 
   printf("Connecting...\n");
@@ -236,7 +247,7 @@ int main(int argc, char *argv[]) {
   }
 
   pthread_t recv_msg_thread = pthread_t();
-  if (pthread_create(&send_msg_thread, NULL, recv_msg_handler, NULL) != 0) {
+  if (pthread_create(&recv_msg_thread, NULL, recv_msg_handler, NULL) != 0) {
     perror("ERROR : pthread");
     return EXIT_FAILURE;
   }
