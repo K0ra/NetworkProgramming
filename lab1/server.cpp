@@ -10,6 +10,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "tcp-commn.h"
+
 using namespace std;
 
 #define DEFAULT_BUF_SIZE 512
@@ -62,34 +64,28 @@ void remove_client(int id) {
   Sends the message by protocol standards:
   message size followed by message body
 */
-int send_msg(int sockfd, char* msg) {
+int send_msg(int sockfd, char *msg) {
   uint32_t msg_size = htonl(strlen(msg));
   // printf("From Server :: Message: %s, msg_size=%li\n", msg, strlen(msg));
-  int res = send(sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
-  if (res > 0) {
-    // printf("First send is ok\n");
-    res = send(sockfd, msg, strlen(msg), 0);
-    if (res <= 0)
-      return -1;
-    // printf("Second send is ok\n\n");
-  }
-  else
+  int res = tcp_send(sockfd, (char *)&msg_size, DEFAULT_BYTES_SIZE);
+  if (res == 0) {
+    res = tcp_send(sockfd, msg, strlen(msg));
+    if (res < 0) return -1;
+  } else
     return -1;
 
   return 0;
 }
 
-/* Send message to all clients except sender */
-void broadcast_message(char *s, int id) {
+/* Send message to all clients */
+void broadcast_message(char *s) {
   pthread_mutex_lock(&clients_mutex);
 
   for (int i = 0; i < MAX_CLIENTS; ++i) {
     if (clients[i]) {
-      if (clients[i]->id != id) {
-        if (send_msg(clients[i]->sockfd, s) < 0) {
-          perror("ERROR: send to descriptor failed");
-          break;
-        }
+      if (send_msg(clients[i]->sockfd, s) < 0) {
+        perror("ERROR: send descriptor failed");
+        continue;
       }
     }
   }
@@ -102,8 +98,6 @@ void *handle_client(void *arg) {
   int leave_flag = 0;
   uint32_t nickname_size = 0;
   uint32_t msg_size = 0;
-  // char *nick_buf = NULL;
-  // char *msg_buf = NULL;
 
   clients_num++;
   client_t *cli = (client_t *)arg;
@@ -113,65 +107,59 @@ void *handle_client(void *arg) {
       break;
     }
     // Get the nick size
-    int receive = recv(cli->sockfd, &nickname_size, DEFAULT_BYTES_SIZE, 0);
+    int receive =
+        tcp_recv(cli->sockfd, (char *)&nickname_size, DEFAULT_BYTES_SIZE);
 
-    if (receive > 0 && nickname_size > 0) {
+    if (receive == 0 && nickname_size > 0) {
       // If no error, get the nickname
       nickname_size = ntohl(nickname_size);
       // printf("Nickname size=%d\n", nickname_size);
 
       char *nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
-      // printf("Nickname buffer size before recv = %zu\n", sizeof(nick_buf));
-      // printf( "Client id %d: Nick buf after malloc: %p\n", cli->id, ( void * )nick_buf );
       memset(nick_buf, 0, (nickname_size + 1));
-      receive = recv(cli->sockfd, nick_buf, nickname_size, 0);
-      // printf( "Client id %d: Nick buf changed: %p\n", cli->id, ( void * )nick_buf );
+      receive = tcp_recv(cli->sockfd, nick_buf, nickname_size);
 
-      if (receive > 0) {
+      if (receive == 0) {
         // printf("Nickname: %s\n", nick_buf);
 
         // If no error, assign nickname to client object
         strncpy(cli->nickname, nick_buf, nickname_size + 1);
         // Get the message size
-        receive = recv(cli->sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
+        receive = tcp_recv(cli->sockfd, (char *)&msg_size, DEFAULT_BYTES_SIZE);
 
-        if (receive > 0 && msg_size > 0) {
+        if (receive == 0 && msg_size > 0) {
           // If no error, get the message
           msg_size = ntohl(msg_size);
           // printf("Message size=%d\n", msg_size);
 
           char *msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
-          // printf( "Client id %d: Msg buf after malloc: %p\n", cli->id, ( void * )msg_buf );
           memset(msg_buf, 0, (msg_size + 1));
-          receive = recv(cli->sockfd, msg_buf, msg_size, 0);
-          // printf( "Client id %d: Msg buf changed: %p\n", cli->id, ( void * )msg_buf );
+          receive = tcp_recv(cli->sockfd, msg_buf, msg_size);
 
-          if (receive > 0) {
+          if (receive == 0) {
             // printf("Message: %s\n", msg_buf);
             time_t t = time(NULL);
             struct tm *lt = localtime(&t);
             sprintf(buffer, "%02d:%02d", lt->tm_hour, lt->tm_min);
 
-            broadcast_message(nick_buf, cli->id);
-            // printf( "Client id %d: Nick buf after send: %p\n", cli->id, ( void * )nick_buf );
-            broadcast_message(msg_buf, cli->id);
-            // printf( "Client id %d: Msg buf after send: %p\n", cli->id, ( void * )msg_buf );
-            broadcast_message(buffer, cli->id);
-            free(nick_buf);
-            free(msg_buf);
+            broadcast_message(nick_buf);
+            broadcast_message(msg_buf);
+            broadcast_message(buffer);
           }
+          free(msg_buf);
         }
       }
+      free(nick_buf);
     } else if (receive == 0) {
       sprintf(buffer, "Client with id %d has left\n", cli->id);
       printf("%s", buffer);
       leave_flag = 1;
     } else {
       printf("ERROR: -1\n");
+      sprintf(buffer, "Client with id %d has left\n", cli->id);
+      printf("%s", buffer);
       leave_flag = 1;
     }
-    // if (nick_buf) free(nick_buf);
-    // if (msg_buf)  free(msg_buf);
     memset(buffer, 0, DEFAULT_BUF_SIZE);
   }
 

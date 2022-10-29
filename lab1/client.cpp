@@ -1,4 +1,4 @@
-#include <iostream>
+// #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,20 +8,21 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "tcp-commn.h"
+
 using namespace std;
 
 #define DEFAULT_BUF_SIZE 512
 #define DEFAULT_NICK_SIZE 32
 #define DEFAULT_BYTES_SIZE 4
 
-int sockfd = 0; // server socket
-char *nickname; // client nickname
+int sockfd = 0;  // server socket
+char *nickname;  // client nickname
 pthread_mutex_t msg_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Remove newline character from the string */
 void str_trim_lf(char *arr, int length) {
-  int i;
-  for (i = 0; i < length; i++) {
+  for (int i = 0; i < length; i++) {
     if (arr[i] == '\n') {
       arr[i] = '\0';
       break;
@@ -33,19 +34,14 @@ void str_trim_lf(char *arr, int length) {
   Sends the message by protocol standards:
   message size followed by message body
 */
-void send_msg(char* msg) {
-  int error_flag = 0;
+int send_msg(char *msg) {
   uint32_t msg_size = htonl(strlen(msg));
-  int res = send(sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
-  if (res > 0) {
-    res = send(sockfd, msg, strlen(msg), 0);
-    if (res <= 0)
-      error_flag = 1;
-  } else {
-    error_flag = 1;
-  }
+  int res = tcp_send(sockfd, (char *)&msg_size, DEFAULT_BYTES_SIZE);
+  if (res < 0) return -1;
+  res = tcp_send(sockfd, msg, strlen(msg));
+  if (res < 0) return -1;
 
-  if (error_flag) perror("ERROR writing to socket");
+  return 0;
 }
 
 void *send_msg_handler(void *args) {
@@ -82,8 +78,9 @@ void *send_msg_handler(void *args) {
       if (strlen(msg) == 0)
         printf("Empty message! There's nothing to send.\n");
       else {
-        send_msg(nickname);
-        send_msg(msg);
+        if ((send_msg(nickname) < 0) || (send_msg(msg) < 0)) {
+          perror("ERROR writing to socket");
+        }
       }
     }
     memset(msg, 0, DEFAULT_BUF_SIZE);
@@ -104,64 +101,63 @@ void *recv_msg_handler(void *args) {
   char *date_buf = NULL;
 
   while (true) {
-    if (leave_flag)
-      break;
+    if (leave_flag) break;
 
     // Get the nick size
-    int receive = recv(sockfd, &nickname_size, DEFAULT_BYTES_SIZE, 0);
+    int receive = tcp_recv(sockfd, (char *)&nickname_size, DEFAULT_BYTES_SIZE);
 
-    if (receive > 0 && nickname_size > 0) {
+    if (receive == 0 && nickname_size > 0) {
       // If no error, get the nickname
       nickname_size = ntohl(nickname_size);
       // printf("Nickname size=%d\n", nickname_size);
 
       nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
       memset(nick_buf, 0, (nickname_size + 1));
-      receive = recv(sockfd, nick_buf, nickname_size, 0);
+      receive = tcp_recv(sockfd, nick_buf, nickname_size);
 
-      if (receive > 0) {
+      if (receive == 0) {
         // printf("Nickname: %s\n", nick_buf);
         // If no error, get the message size
-        receive = recv(sockfd, &msg_size, DEFAULT_BYTES_SIZE, 0);
+        receive = tcp_recv(sockfd, (char *)&msg_size, DEFAULT_BYTES_SIZE);
 
-        if (receive > 0 && msg_size > 0) {
+        if (receive == 0 && msg_size > 0) {
           // If no error, get the message
           msg_size = ntohl(msg_size);
           // printf("Message size=%d\n", msg_size);
 
           msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
           memset(msg_buf, 0, (msg_size + 1));
-          receive = recv(sockfd, msg_buf, msg_size, 0);
+          receive = tcp_recv(sockfd, msg_buf, msg_size);
 
-          if (receive > 0) {
+          if (receive == 0) {
             // printf("Message: %s\n", msg_buf);
 
             // If no error, get the date size
-            receive = recv(sockfd, &date_size, DEFAULT_BYTES_SIZE, 0);
+            receive = tcp_recv(sockfd, (char *)&date_size, DEFAULT_BYTES_SIZE);
 
-            if (receive > 0 && date_size > 0) {
+            if (receive == 0 && date_size > 0) {
               // If no error, get the date
               date_size = ntohl(date_size);
               date_buf = (char *)malloc(sizeof(char) * (date_size + 1));
               memset(date_buf, 0, (date_size + 1));
-              receive = recv(sockfd, date_buf, date_size, 0);
+              receive = tcp_recv(sockfd, date_buf, date_size);
 
-              if (receive > 0) {
+              if (receive == 0) {
                 pthread_mutex_lock(&msg_mutex);
                 printf("{%s} [%s] %s\n", date_buf, nick_buf, msg_buf);
                 pthread_mutex_unlock(&msg_mutex);
               }
+              free(date_buf);
             }
           }
+          free(msg_buf);
         }
       }
+      free(nick_buf);
     } else {
       printf("ERROR: -1\n");
       leave_flag = 1;
     }
-    if (nick_buf) free(nick_buf);
-    if (msg_buf)  free(msg_buf);
-    if (date_buf) free(date_buf);
   }
 
   pthread_exit(NULL);
@@ -185,15 +181,7 @@ int main(int argc, char *argv[]) {
 
   strncpy(hostname, argv[1], sizeof(hostname) - 1);
   portno = (uint16_t)atoi(argv[2]);
-  // strncpy(nickname, argv[3], sizeof(nickname));
   nickname = argv[3];
-
-  // if (strlen(nickname) < 2 || strlen(nickname) >= DEFAULT_NICK_SIZE - 1) {
-  //   perror(
-  //     "The nickname has inappropriate size. "
-  //     "It should be 2 to 32 characters.\nQuitting...\n");
-  //   exit(EXIT_FAILURE);
-  // }
 
   /* Create a socket point */
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -219,7 +207,6 @@ int main(int argc, char *argv[]) {
   serv_addr.sin_port = htons(portno);
 
   // cout << serv_addr.sin_addr.s_addr << ": " << serv_addr.sin_port << endl;
-
 
   printf("Connecting...\n");
 
