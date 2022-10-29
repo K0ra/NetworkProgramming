@@ -102,8 +102,8 @@ void *handle_client(void *arg) {
   int leave_flag = 0;
   uint32_t nickname_size = 0;
   uint32_t msg_size = 0;
-  char *nick_buf = NULL;
-  char *msg_buf = NULL;
+  // char *nick_buf = NULL;
+  // char *msg_buf = NULL;
 
   clients_num++;
   client_t *cli = (client_t *)arg;
@@ -120,9 +120,12 @@ void *handle_client(void *arg) {
       nickname_size = ntohl(nickname_size);
       // printf("Nickname size=%d\n", nickname_size);
 
-      nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
+      char *nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
+      // printf("Nickname buffer size before recv = %zu\n", sizeof(nick_buf));
+      // printf( "Client id %d: Nick buf after malloc: %p\n", cli->id, ( void * )nick_buf );
       memset(nick_buf, 0, (nickname_size + 1));
       receive = recv(cli->sockfd, nick_buf, nickname_size, 0);
+      // printf( "Client id %d: Nick buf changed: %p\n", cli->id, ( void * )nick_buf );
 
       if (receive > 0) {
         // printf("Nickname: %s\n", nick_buf);
@@ -137,41 +140,39 @@ void *handle_client(void *arg) {
           msg_size = ntohl(msg_size);
           // printf("Message size=%d\n", msg_size);
 
-          msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
+          char *msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
+          // printf( "Client id %d: Msg buf after malloc: %p\n", cli->id, ( void * )msg_buf );
           memset(msg_buf, 0, (msg_size + 1));
           receive = recv(cli->sockfd, msg_buf, msg_size, 0);
+          // printf( "Client id %d: Msg buf changed: %p\n", cli->id, ( void * )msg_buf );
 
           if (receive > 0) {
             // printf("Message: %s\n", msg_buf);
-            // char *date_buf = (char *)malloc(sizeof(char) * );
             time_t t = time(NULL);
             struct tm *lt = localtime(&t);
-            // msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
             sprintf(buffer, "%02d:%02d", lt->tm_hour, lt->tm_min);
 
             broadcast_message(nick_buf, cli->id);
+            // printf( "Client id %d: Nick buf after send: %p\n", cli->id, ( void * )nick_buf );
             broadcast_message(msg_buf, cli->id);
+            // printf( "Client id %d: Msg buf after send: %p\n", cli->id, ( void * )msg_buf );
             broadcast_message(buffer, cli->id);
-            // if (nick_buf) free(nick_buf);
-            // if (msg_buf)  free(msg_buf);
-            // memset(buffer, 0, DEFAULT_BUF_SIZE);
+            free(nick_buf);
+            free(msg_buf);
           }
         }
       }
     } else if (receive == 0) {
       sprintf(buffer, "Client with id %d has left\n", cli->id);
       printf("%s", buffer);
-      // send_message(buffer, cli->id);
       leave_flag = 1;
     } else {
       printf("ERROR: -1\n");
       leave_flag = 1;
     }
-
-    if (nick_buf) free(nick_buf);
-    if (msg_buf)  free(msg_buf);
+    // if (nick_buf) free(nick_buf);
+    // if (msg_buf)  free(msg_buf);
     memset(buffer, 0, DEFAULT_BUF_SIZE);
-    // memset(cli->nickname, 0, DEFAULT_NICK_SIZE);
   }
 
   /* Delete client from queue and yield thread */
@@ -198,7 +199,6 @@ int main(int argc, char *argv[]) {
     exit(EXIT_SUCCESS);
   }
 
-  // string ip = "127.0.0.1";
   portno = (uint16_t)atoi(argv[1]);
 
   // Initialize socket
@@ -240,9 +240,11 @@ int main(int argc, char *argv[]) {
       client_t *cli = (client_t *)malloc(sizeof(client_t));
       cli->sockfd = newsockfd;
       add_client(cli);
-      printf("New client has joined the chat.\n");
+      printf("Client with id %d has joined the chat.\n", cli->id);
+
       // Create a thread process for that client
       pthread_create(&tid, NULL, &handle_client, (void *)cli);
+      pthread_detach(tid);
     } else {
       printf("Server is full.\n");
       close(newsockfd);

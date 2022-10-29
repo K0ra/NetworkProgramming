@@ -73,7 +73,7 @@ void *send_msg_handler(void *args) {
         perror("ERROR on fgets()");
         exit(EXIT_FAILURE);
       }
-      printf("Message to send from client: %s\n", msg);
+      // printf("Message to send from client: %s\n", msg);
 
       pthread_mutex_unlock(&msg_mutex);
 
@@ -82,7 +82,6 @@ void *send_msg_handler(void *args) {
       if (strlen(msg) == 0)
         printf("Empty message! There's nothing to send.\n");
       else {
-        // send(sockfd, msg, strlen(msg), 0);
         send_msg(nickname);
         send_msg(msg);
       }
@@ -137,7 +136,7 @@ void *recv_msg_handler(void *args) {
           if (receive > 0) {
             // printf("Message: %s\n", msg_buf);
 
-            //If no error, get the date size
+            // If no error, get the date size
             receive = recv(sockfd, &date_size, DEFAULT_BYTES_SIZE, 0);
 
             if (receive > 0 && date_size > 0) {
@@ -151,9 +150,6 @@ void *recv_msg_handler(void *args) {
                 pthread_mutex_lock(&msg_mutex);
                 printf("{%s} [%s] %s\n", date_buf, nick_buf, msg_buf);
                 pthread_mutex_unlock(&msg_mutex);
-                // free(nick_buf);
-                // free(msg_buf);
-                // free(date_buf);
               }
             }
           }
@@ -168,9 +164,6 @@ void *recv_msg_handler(void *args) {
     if (date_buf) free(date_buf);
   }
 
-  if (nick_buf) free(nick_buf);
-  if (msg_buf)  free(msg_buf);
-  if (date_buf) free(date_buf);
   pthread_exit(NULL);
 }
 
