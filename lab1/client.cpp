@@ -69,7 +69,6 @@ void *send_msg_handler(void *args) {
         perror("ERROR on fgets()");
         exit(EXIT_FAILURE);
       }
-      // printf("Message to send from client: %s\n", msg);
 
       pthread_mutex_unlock(&msg_mutex);
 
@@ -116,22 +115,18 @@ void *recv_msg_handler(void *args) {
       receive = tcp_recv(sockfd, nick_buf, nickname_size);
 
       if (receive == 0) {
-        // printf("Nickname: %s\n", nick_buf);
         // If no error, get the message size
         receive = tcp_recv(sockfd, (char *)&msg_size, DEFAULT_BYTES_SIZE);
 
         if (receive == 0 && msg_size > 0) {
           // If no error, get the message
           msg_size = ntohl(msg_size);
-          // printf("Message size=%d\n", msg_size);
 
           msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
           memset(msg_buf, 0, (msg_size + 1));
           receive = tcp_recv(sockfd, msg_buf, msg_size);
 
           if (receive == 0) {
-            // printf("Message: %s\n", msg_buf);
-
             // If no error, get the date size
             receive = tcp_recv(sockfd, (char *)&date_size, DEFAULT_BYTES_SIZE);
 
@@ -205,10 +200,6 @@ int main(int argc, char *argv[]) {
   bcopy(server->h_addr, (char *)&serv_addr.sin_addr.s_addr,
         (size_t)server->h_length);
   serv_addr.sin_port = htons(portno);
-
-  // cout << serv_addr.sin_addr.s_addr << ": " << serv_addr.sin_port << endl;
-
-  printf("Connecting...\n");
 
   /* Connect to the server */
   if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {

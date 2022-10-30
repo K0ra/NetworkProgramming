@@ -108,20 +108,17 @@ void *handle_client(void *arg) {
     }
     // Get the nick size
     int receive =
-        tcp_recv(cli->sockfd, (char *)&nickname_size, DEFAULT_BYTES_SIZE);
+      tcp_recv(cli->sockfd, (char *)&nickname_size, DEFAULT_BYTES_SIZE);
 
     if (receive == 0 && nickname_size > 0) {
       // If no error, get the nickname
       nickname_size = ntohl(nickname_size);
-      // printf("Nickname size=%d\n", nickname_size);
 
       char *nick_buf = (char *)malloc(sizeof(char) * (nickname_size + 1));
       memset(nick_buf, 0, (nickname_size + 1));
       receive = tcp_recv(cli->sockfd, nick_buf, nickname_size);
 
       if (receive == 0) {
-        // printf("Nickname: %s\n", nick_buf);
-
         // If no error, assign nickname to client object
         strncpy(cli->nickname, nick_buf, nickname_size + 1);
         // Get the message size
@@ -130,14 +127,12 @@ void *handle_client(void *arg) {
         if (receive == 0 && msg_size > 0) {
           // If no error, get the message
           msg_size = ntohl(msg_size);
-          // printf("Message size=%d\n", msg_size);
 
           char *msg_buf = (char *)malloc(sizeof(char) * (msg_size + 1));
           memset(msg_buf, 0, (msg_size + 1));
           receive = tcp_recv(cli->sockfd, msg_buf, msg_size);
 
           if (receive == 0) {
-            // printf("Message: %s\n", msg_buf);
             time_t t = time(NULL);
             struct tm *lt = localtime(&t);
             sprintf(buffer, "%02d:%02d", lt->tm_hour, lt->tm_min);
