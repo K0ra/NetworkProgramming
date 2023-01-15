@@ -28,12 +28,13 @@ class Threading_socket():
             if(self.dataReceive != ""):
                 who = self.dataReceive.split("|")[0]
                 action = self.dataReceive.split("|")[1]
-                # turn = self.dataReceive.split("|")[2]
-                if(action == "hit" and who == "server"):
-                    #     print(self.dataReceive)
-                    x = int(self.dataReceive.split("|")[2])
-                    y = int(self.dataReceive.split("|")[3])
+                turn = int(self.dataReceive.split("|")[2])
+                print(action, turn)
+                if(action == "hit" and who == "server" and turn == 1):
+                    x = int(self.dataReceive.split("|")[3])
+                    y = int(self.dataReceive.split("|")[4])
                     self.gui.handleButton(x, y)
+                    turn = 0
                 if(action == "Undo" and who == "server"):
                     self.gui.Undo(False)
             self.dataReceive = ""
@@ -59,14 +60,16 @@ class Threading_socket():
                 # Read/parse the data sent by the client
                 self.dataReceive = self.conn.recv(1024).decode()
                 if(self.dataReceive != ""):
-                    turn = self.dataReceive.split("|")[0]
+                    who = self.dataReceive.split("|")[0]
                     action = self.dataReceive.split("|")[1]
-                    print(action)
-                    if(action == "hit" and turn == "client"):
-                        x = int(self.dataReceive.split("|")[2])
-                        y = int(self.dataReceive.split("|")[3])
+                    turn = int(self.dataReceive.split("|")[2])
+                    print(action, turn)
+                    if(action == "hit" and who == "client" and turn == 0):
+                        x = int(self.dataReceive.split("|")[3])
+                        y = int(self.dataReceive.split("|")[4])
                         self.gui.handleButton(x, y)
-                    if(action == "Undo" and turn == "client"):
+                        turn = 1
+                    if(action == "Undo" and who == "client"):
                         self.gui.Undo(False)
                 self.dataReceive = ""
         finally:

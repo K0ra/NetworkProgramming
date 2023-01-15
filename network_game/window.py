@@ -25,16 +25,18 @@ class Window(tk.Tk):
             if self.memory.count([x, y]) == 0:
                 self.memory.append([x, y])
             
-            if len(self.memory) % 2 == 1:
+            turn = (len(self.memory) % 2)
+            
+            if turn == 1:
                 self.Buts[x, y]['text'] = 'O'
-                self.Threading_socket.sendData("{}|{}|{}|".format("hit", x, y))
+                self.Threading_socket.sendData("{}|{}|{}|{}|".format("hit", turn, x, y))
                 if(self.checkWin(x, y, "O")):
                     self.notification("Winner", "O")
                     self.newGame()
             else:
                 print(self.Threading_socket.name)
                 self.Buts[x, y]['text'] = 'X'
-                self.Threading_socket.sendData("{}|{}|{}|".format("hit", x, y))
+                self.Threading_socket.sendData("{}|{}|{}|{}|".format("hit", turn, x, y))
                 if(self.checkWin(x, y, "X")):
                     self.notification("Winner", "X")
                     self.newGame()
