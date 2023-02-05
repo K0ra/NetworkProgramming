@@ -31,8 +31,9 @@ void decompress(char* msg, int msg_length, int* length) {
       *length += 2;
       return;
     } else {  // If the mark starts with b00
-              // Take the length of current bytes to read
+      // Take the length of current bytes to read
       int mark = msg[i++];
+      i += mark;
       new_line += (mark + 1); // +1 for dot in domain
     }
   }
@@ -57,7 +58,7 @@ int main(int argc, char* argv[]) {
   hints.ai_flags = AI_PASSIVE;
 
   struct addrinfo* result = NULL;
-  char buf[SIZE];
+  //char buf[SIZE];
   int rc = 0;
   if ((rc = getaddrinfo(NULL, service_port, &hints, &result)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rc));
@@ -116,6 +117,7 @@ int main(int argc, char* argv[]) {
 
     // QTYPE=0x0001 -> type A
     if (ntohs(question.qtype) != 1) {
+      printf("Type=%d\n", ntohs(question.qtype));
       fprintf(stderr,
               "A packet of type A is expected, another type is received.\n");
       return 1;
